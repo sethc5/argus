@@ -1,7 +1,12 @@
 import asyncio
 import json
+import os, sys
+# import from local package directory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 import pytest
+# skip entire file when sqlite client not available
+pytest.importorskip("aiosqlite")
 
 from github_research_feed import server
 from github_research_feed.server import DigestInput

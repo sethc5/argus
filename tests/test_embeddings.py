@@ -1,3 +1,7 @@
+import os, sys
+# allow importing from local src directory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
 import pytest
 from github_research_feed.embeddings import cosine_similarity, score_against_contexts
 

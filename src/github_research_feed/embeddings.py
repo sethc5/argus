@@ -1,23 +1,28 @@
 """Embedding generation and cosine similarity scoring."""
 
 import json
-import numpy as np
+import math
 from typing import List, Optional
-from openai import AsyncOpenAI
+
+# openai may not be available during testing
+try:
+    from openai import AsyncOpenAI
+except ImportError:  # pragma: no cover - optional
+    AsyncOpenAI = None
 
 DEFAULT_MODEL = "text-embedding-3-small"
 MAX_TEXT_CHARS = 8000  # Keep well under token limits
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
-    """Compute cosine similarity between two embedding vectors."""
-    va = np.array(a, dtype=np.float32)
-    vb = np.array(b, dtype=np.float32)
-    norm_a = np.linalg.norm(va)
-    norm_b = np.linalg.norm(vb)
+    """Compute cosine similarity between two embedding vectors without numpy."""
+    # simple dot product / norms
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
     if norm_a == 0 or norm_b == 0:
         return 0.0
-    return float(np.dot(va, vb) / (norm_a * norm_b))
+    return dot / (norm_a * norm_b)
 
 
 def score_against_contexts(
@@ -73,7 +78,14 @@ def build_repo_text(repo_data: dict, readme_excerpt: Optional[str] = None) -> st
 
 class EmbeddingClient:
     def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
-        self._client = AsyncOpenAI(api_key=api_key)
+        if AsyncOpenAI is None:
+            # create dummy client that will raise if used
+            class _Dummy:
+                async def embeddings(self, *args, **kwargs):
+                    raise RuntimeError("openai package required for embedding")
+            self._client = _Dummy()
+        else:
+            self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
 
     async def embed(self, text: str) -> List[float]:

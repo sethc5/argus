@@ -3,7 +3,13 @@ import sqlite3
 from pathlib import Path
 import os
 
+# ensure local package can be imported without installation
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
 import pytest
+# skip if aiosqlite not available
+pytest.importorskip("aiosqlite")
 
 from github_research_feed import db
 

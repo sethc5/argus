@@ -1,9 +1,15 @@
 """GitHub API client - async, rate-limit-aware."""
 
-import httpx
+
 from typing import Optional, List, Dict, Any
 import time
 import asyncio
+
+# httpx is an external dependency; allow module to import without it
+try:
+    import httpx
+except ImportError:  # pragma: no cover - optional
+    httpx = None
 
 GITHUB_API = "https://api.github.com"
 GITHUB_TRENDING_SCRAPE = "https://github.com/trending"
