@@ -4,7 +4,7 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 import pytest
-pytest.importorskip("aiosqlite")  # underlying db module uses aiosqlite
+# note: require aiosqlite to be installed in virtualenv for these tests
 
 from github_research_feed import feed_engine, db
 
@@ -71,6 +71,36 @@ def test_discover_no_contexts(tmp_path):
     assert results and results[0]["full_name"] == "owner/repo"
 
 
+def test_poll_all(tmp_path, monkeypatch):
+    db_path = tmp_path / "feed.db"
+    run_async(db.init_db(db_path))
+    # add context so embeddings/scoring has something
+    run_async(db.upsert_project_context(db_path, "ctx", "desc", [1.0]))
+    # add watched repo record
+    run_async(db.upsert_watched_repo(db_path, "owner/repo", source="manual"))
+
+    class PollGitHub(DummyGitHub):
+        async def get_releases(self, full_name, limit=5):
+            # one new release
+            return [{"published_at": "2026-01-01T00:00:00Z", "tag_name": "v1", "body": "notes", "html_url": "http://"}]
+
+        async def get_commits(self, full_name, since=None, limit=20):
+            return []
+
+    gh = PollGitHub({"owner/repo": {"full_name": "owner/repo"}})
+    emb = DummyEmbed()
+    summ = DummySumm()
+    engine = feed_engine.FeedEngine(db_path, gh, emb, summ)
+
+    counts = run_async(engine.poll_all())
+    assert counts["releases"] == 1
+    assert counts["repos_checked"] == 1
+    # verify feed_events written
+    evs = run_async(db.get_feed_events(db_path, days_back=365))
+    assert len(evs) == 1
+    assert evs[0]["repo_full_name"] == "owner/repo"
+
+
 def test_discover_with_contexts(tmp_path, monkeypatch):
     db_path = tmp_path / "feed.db"
     run_async(db.init_db(db_path))
@@ -86,7 +116,7 @@ def test_discover_with_contexts(tmp_path, monkeypatch):
     recorded = []
     async def fake_upsert(*args, **kwargs):
         recorded.append((args, kwargs))
-    monkeypatch.setattr(db, "upsert_discovery_candidate", fake_upsert)
+    monkeypatch.setattr(feed_engine, "upsert_discovery_candidate", fake_upsert)
 
     results = run_async(engine.discover_repos("myquery", language="python", min_stars=10, limit=1))
     assert results and results[0]["similarity_score"] >= 0.0
