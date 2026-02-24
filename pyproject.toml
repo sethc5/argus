@@ -1,6 +1,7 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+# use modern setuptools build backend (compatible with editable installs)
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "github-research-feed"
