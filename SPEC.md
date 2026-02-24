@@ -83,7 +83,9 @@ CREATE TABLE feed_events (
     title TEXT,
     summary TEXT,
     relevance_score REAL,          -- 0.0 - 1.0 against project context
-    raw_data TEXT                  -- JSON
+    matched_context TEXT,          -- name of the project context with highest relevance
+    raw_data TEXT,                 -- JSON
+    UNIQUE(repo_full_name, event_type, event_at)
 );
 
 -- Project contexts (your projects, used for relevance scoring)

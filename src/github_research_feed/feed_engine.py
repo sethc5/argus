@@ -93,6 +93,7 @@ class FeedEngine:
                 title=f"Release {release.get('tag_name', '?')}",
                 summary=summary,
                 relevance_score=best_score,
+                matched_context=best_context,
                 raw_data={"tag": release.get("tag_name"), "url": release.get("html_url")},
             )
             counts["releases"] += 1
@@ -112,6 +113,7 @@ class FeedEngine:
                 title=f"{len(commits)} new commits",
                 summary=summary,
                 relevance_score=best_score,
+                matched_context=best_context,
                 raw_data={"count": len(commits), "sample_messages": messages[:5]},
             )
             counts["commits"] += len(commits)

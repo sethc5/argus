@@ -23,8 +23,8 @@ dependencies = [
 github-research-feed = "github_research_feed.server:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["github_research_feed*"]
 
 [tool.setuptools.package-dir]
-"github_research_feed" = "src"
+"github_research_feed" = "src/github_research_feed"

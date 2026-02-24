@@ -18,7 +18,7 @@ from .db import (
     get_feed_events, get_discovery_candidates, dismiss_candidate,
 )
 from .github import GitHubClient
-from .embeddings import EmbeddingClient, build_repo_text, score_against_contexts
+from .embeddings import EmbeddingClient, build_repo_text, score_against_contexts, cosine_similarity
 from .summarizer import Summarizer
 from .feed_engine import FeedEngine
 
@@ -69,13 +69,9 @@ async def feed_get_digest(params: DigestInput) -> str:
         _config.db_path,
         days_back=params.days_back,
         min_relevance=params.min_relevance,
+        context_filter=params.project_filter,
         limit=50,
     )
-
-    # Filter by project context if requested
-    if params.project_filter:
-        # Re-fetch with higher relevance threshold for the filtered view
-        events = [e for e in events if e.get("relevance_score", 0) >= 0.4]
 
     digest_summary = None
     if params.summarize and events:
@@ -138,9 +134,7 @@ async def feed_get_repo_summary(params: RepoSummaryInput) -> str:
     if params.project_context:
         ctx = await get_project_context(_config.db_path, params.project_context)
         if ctx and ctx.get("embedding"):
-            import json as _json
-            ctx_emb = _json.loads(ctx["embedding"])
-            from .embeddings import cosine_similarity
+            ctx_emb = json.loads(ctx["embedding"])
             relevance_score = cosine_similarity(embedding, ctx_emb)
             matched_context = params.project_context
     else:

@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS feed_events (
     title TEXT NOT NULL,
     summary TEXT,
     relevance_score REAL DEFAULT 0.0,
-    raw_data TEXT
+    matched_context TEXT,
+    raw_data TEXT,
+    UNIQUE(repo_full_name, event_type, event_at)
 );
 
 CREATE TABLE IF NOT EXISTS project_contexts (
@@ -64,6 +66,12 @@ def _now() -> str:
 async def init_db(db_path: Path) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(SCHEMA)
+        # perform simple migrations for existing databases
+        cursor = await db.execute("PRAGMA table_info(feed_events)")
+        cols = await cursor.fetchall()
+        existing = {c[1] for c in cols}
+        if "matched_context" not in existing:
+            await db.execute("ALTER TABLE feed_events ADD COLUMN matched_context TEXT")
         await db.commit()
 
 
@@ -97,10 +105,16 @@ async def remove_watched_repo(db_path: Path, full_name: str) -> bool:
 
 async def update_repo_checked(db_path: Path, full_name: str, summary: Optional[str] = None) -> None:
     async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            "UPDATE watched_repos SET last_checked = ?, last_summary = ? WHERE full_name = ?",
-            (_now(), summary, full_name)
-        )
+        if summary is None:
+            await db.execute(
+                "UPDATE watched_repos SET last_checked = ? WHERE full_name = ?",
+                (_now(), full_name)
+            )
+        else:
+            await db.execute(
+                "UPDATE watched_repos SET last_checked = ?, last_summary = ? WHERE full_name = ?",
+                (_now(), summary, full_name)
+            )
         await db.commit()
 
 
@@ -123,15 +137,17 @@ async def insert_feed_event(
     title: str,
     summary: Optional[str] = None,
     relevance_score: float = 0.0,
+    matched_context: Optional[str] = None,
     raw_data: Optional[Dict] = None,
 ) -> int:
     async with aiosqlite.connect(db_path) as db:
         cursor = await db.execute(
             """INSERT INTO feed_events
-               (repo_full_name, event_type, event_at, title, summary, relevance_score, raw_data)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (repo_full_name, event_type, event_at, title, summary, relevance_score, matched_context, raw_data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(repo_full_name, event_type, event_at) DO NOTHING""",
             (repo_full_name, event_type, event_at, title, summary, relevance_score,
-             json.dumps(raw_data) if raw_data else None)
+             matched_context, json.dumps(raw_data) if raw_data else None)
         )
         await db.commit()
         return cursor.lastrowid
@@ -142,6 +158,7 @@ async def get_feed_events(
     days_back: int = 7,
     min_relevance: float = 0.0,
     repo_filter: Optional[str] = None,
+    context_filter: Optional[str] = None,
     limit: int = 100,
 ) -> List[Dict[str, Any]]:
     from datetime import timedelta
@@ -154,6 +171,10 @@ async def get_feed_events(
     if repo_filter:
         query += " AND repo_full_name = ?"
         params.append(repo_filter)
+
+    if context_filter:
+        query += " AND matched_context = ?"
+        params.append(context_filter)
 
     query += " ORDER BY relevance_score DESC, event_at DESC LIMIT ?"
     params.append(limit)
