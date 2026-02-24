@@ -2,6 +2,8 @@
 
 import httpx
 from typing import Optional, List, Dict, Any
+import time
+import asyncio
 
 GITHUB_API = "https://api.github.com"
 GITHUB_TRENDING_SCRAPE = "https://github.com/trending"
@@ -18,6 +20,20 @@ class GitHubClient:
     async def _get(self, path: str, params: Optional[Dict] = None) -> Any:
         async with httpx.AsyncClient(headers=self._headers, timeout=30.0) as client:
             resp = await client.get(f"{GITHUB_API}{path}", params=params)
+            # rate-limit awareness: if remaining is zero, wait until reset
+            if resp.headers:
+                remaining = resp.headers.get("X-RateLimit-Remaining")
+                reset = resp.headers.get("X-RateLimit-Reset")
+                if remaining is not None:
+                    try:
+                        rem = int(remaining)
+                        if rem <= 0 and reset:
+                            wait = int(reset) - int(time.time())
+                            if wait > 0:
+                                print(f"GitHub rate limit reached, sleeping {wait}s")
+                                await asyncio.sleep(wait)
+                    except ValueError:
+                        pass
             resp.raise_for_status()
             return resp.json()
 
