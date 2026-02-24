@@ -224,6 +224,16 @@ async def get_project_context(db_path: Path, name: str) -> Optional[Dict[str, An
             return dict(row) if row else None
 
 
+async def delete_project_context(db_path: Path, name: str) -> bool:
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "DELETE FROM project_contexts WHERE name = ?",
+            (name,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 # --- Discovery Candidates ---
 
 async def upsert_discovery_candidate(

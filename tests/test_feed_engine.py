@@ -10,7 +10,7 @@ from github_research_feed import feed_engine, db
 
 
 def run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class DummyGitHub:
@@ -48,6 +48,9 @@ class DummyEmbed:
         self.calls.append(text)
         # return simple vector based on length
         return [float(len(text))]
+
+    async def embed_batch(self, texts):
+        return [[float(len(text))] for text in texts]
 
 
 class DummySumm:

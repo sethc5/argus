@@ -7,6 +7,7 @@ and project context registration — all queryable by Claude mid-session.
 """
 
 import json
+from pathlib import Path
 from typing import Optional
 # mcp not required for testing; provide dummy when missing
 try:
@@ -40,6 +41,7 @@ from .db import (
     init_db, upsert_watched_repo, get_watched_repos, remove_watched_repo,
     upsert_project_context, get_project_contexts, get_project_context,
     get_feed_events, get_discovery_candidates, dismiss_candidate,
+    delete_project_context,
 )
 from .github import GitHubClient
 from .embeddings import EmbeddingClient, build_repo_text, score_against_contexts, cosine_similarity
@@ -56,7 +58,7 @@ _summarizer = Summarizer(_config.anthropic_api_key, _config.summarizer_model)
 _engine = FeedEngine(_config.db_path, _github, _embeddings, _summarizer, _config.min_relevance)
 
 
-_db_initialized = False
+_db_initialized_path: Optional[Path] = None
 
 async def _ensure_db():
     """Run database initialization once per process.
@@ -65,10 +67,12 @@ async def _ensure_db():
     simply cache the fact that the schema has been created to avoid
     unnecessary disk I/O.
     """
-    global _db_initialized
-    if not _db_initialized:
-        await init_db(_config.db_path)
-        _db_initialized = True
+    global _db_initialized_path
+    target = _config.db_path
+    resolved_target = target.resolve()
+    if _db_initialized_path != resolved_target:
+        await init_db(resolved_target)
+        _db_initialized_path = resolved_target
 
 
 # ============================================================
@@ -124,6 +128,7 @@ async def feed_get_digest(params: DigestInput) -> str:
                 "summary": e["summary"],
                 "relevance_score": round(e.get("relevance_score", 0), 3),
                 "event_at": e["event_at"],
+                "matched_context": e.get("matched_context"),
             }
             for e in events
         ]
@@ -503,6 +508,22 @@ async def feed_update_context(params: UpdateContextInput) -> str:
     embedding = await _embeddings.embed(params.description)
     await upsert_project_context(_config.db_path, params.name, params.description, embedding)
     return json.dumps({"updated_context": params.name})
+
+
+class DeleteContextInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., description="Project context name to delete")
+
+
+@mcp.tool(
+    name="feed_delete_context",
+    annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True}
+)
+async def feed_delete_context(params: DeleteContextInput) -> str:
+    """Remove a registered project context."""
+    await _ensure_db()
+    deleted = await delete_project_context(_config.db_path, params.name)
+    return json.dumps({"deleted": deleted, "context": params.name})
 
 
 # ============================================================

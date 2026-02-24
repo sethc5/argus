@@ -3,6 +3,7 @@
 
 from typing import Optional, List, Dict, Any
 import time
+import logging
 import asyncio
 
 # httpx is an external dependency; allow module to import without it
@@ -13,6 +14,8 @@ except ImportError:  # pragma: no cover - optional
 
 GITHUB_API = "https://api.github.com"
 GITHUB_TRENDING_SCRAPE = "https://github.com/trending"
+
+_logger = logging.getLogger(__name__)
 
 
 class GitHubClient:
@@ -27,24 +30,31 @@ class GitHubClient:
         headers = self._headers.copy()
         if extra_headers:
             headers.update(extra_headers)
+
         async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-            resp = await client.get(f"{GITHUB_API}{path}", params=params)
-            # rate-limit awareness: if remaining is zero, wait until reset
-            if resp.headers:
-                remaining = resp.headers.get("X-RateLimit-Remaining")
-                reset = resp.headers.get("X-RateLimit-Reset")
-                if remaining is not None:
-                    try:
-                        rem = int(remaining)
-                        if rem <= 0 and reset:
-                            wait = int(reset) - int(time.time())
-                            if wait > 0:
-                                print(f"GitHub rate limit reached, sleeping {wait}s")
-                                await asyncio.sleep(wait)
-                    except ValueError:
-                        pass
+            retries = 0
+            while True:
+                resp = await client.get(f"{GITHUB_API}{path}", params=params)
+                if resp.headers:
+                    remaining = resp.headers.get("X-RateLimit-Remaining")
+                    reset = resp.headers.get("X-RateLimit-Reset")
+                    if remaining is not None:
+                        try:
+                            rem = int(remaining)
+                            if rem <= 0 and reset:
+                                wait = max(int(reset) - int(time.time()), 0)
+                                if wait > 0:
+                                    _logger.info("GitHub rate limit reached, sleeping %ds", wait)
+                                    await asyncio.sleep(wait)
+                                retries += 1
+                                if retries >= 3:
+                                    break
+                                continue
+                        except ValueError:
+                            pass
+                resp.raise_for_status()
+                return resp.json()
             resp.raise_for_status()
-            return resp.json()
 
     async def get_starred_repos(self, username: str, limit: int = 200) -> List[Dict]:
         """Fetch starred repos for a user (paginates automatically up to limit)."""
@@ -127,13 +137,26 @@ class GitHubClient:
         limit: int = 50,
     ) -> List[Dict]:
         """Get repos from an org, filtered by language and stars."""
-        repos = await self._get(f"/orgs/{org}/repos", {"per_page": 100, "sort": "updated"})
-        filtered = [
-            r for r in repos
-            if r.get("stargazers_count", 0) >= min_stars
-            and (language is None or (r.get("language") or "").lower() == language.lower())
-        ]
-        return filtered[:limit]
+        repos = []
+        page = 1
+        per_page = 100
+        while len(repos) < limit:
+            batch = await self._get(
+                f"/orgs/{org}/repos",
+                {"per_page": per_page, "page": page, "sort": "updated"},
+            )
+            if not batch:
+                break
+            filtered = [
+                r for r in batch
+                if r.get("stargazers_count", 0) >= min_stars
+                and (language is None or (r.get("language") or "").lower() == language.lower())
+            ]
+            repos.extend(filtered)
+            if len(batch) < per_page:
+                break
+            page += 1
+        return repos[:limit]
 
 
     async def get_trending(

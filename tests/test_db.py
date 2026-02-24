@@ -1,5 +1,6 @@
 import asyncio
 import sqlite3
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import os
 
@@ -15,7 +16,7 @@ from github_research_feed import db
 
 
 def run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_init_and_migration(tmp_path):
@@ -34,9 +35,10 @@ def test_insert_and_query_event(tmp_path):
     db_path = tmp_path / "feed.db"
     run_async(db.init_db(db_path))
     # insert two events with same key, second should be ignored
-    run_async(db.insert_feed_event(db_path, "owner/repo", "release", "2023-01-01T00:00:00Z", "v1", relevance_score=0.5))
-    run_async(db.insert_feed_event(db_path, "owner/repo", "release", "2023-01-01T00:00:00Z", "v1", relevance_score=0.8))
-    events = run_async(db.get_feed_events(db_path, days_back=365))
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    run_async(db.insert_feed_event(db_path, "owner/repo", "release", recent, "v1", relevance_score=0.5))
+    run_async(db.insert_feed_event(db_path, "owner/repo", "release", recent, "v1", relevance_score=0.8))
+    events = run_async(db.get_feed_events(db_path, days_back=7))
     assert len(events) == 1
     assert events[0]["relevance_score"] == 0.5
 

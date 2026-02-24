@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os, sys
+from datetime import datetime, timezone, timedelta
 # import from local package directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
@@ -13,7 +14,7 @@ from github_research_feed.server import DigestInput
 
 
 def run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_digest_empty(tmp_path, monkeypatch):
@@ -40,8 +41,7 @@ def test_digest_empty(tmp_path, monkeypatch):
     from github_research_feed import db
     run_async(db.upsert_project_context(server._config.db_path, "testctx", "dummy", None))
     # insert a feed event with matched_context
-    from datetime import datetime, timedelta
-    recent = (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z"
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     run_async(db.insert_feed_event(
         server._config.db_path,
         repo_full_name="owner/repo",
@@ -58,6 +58,7 @@ def test_digest_empty(tmp_path, monkeypatch):
     data2 = json.loads(result2)
     assert data2["event_count"] == 1
     assert data2["events"][0]["repo"] == "owner/repo"
+    assert data2["events"][0]["matched_context"] == "testctx"
 
     # exercise watch management tools
     add_res = run_async(server.feed_watch_repo(server.WatchRepoInput(repo="owner/repo1")))
@@ -70,6 +71,15 @@ def test_digest_empty(tmp_path, monkeypatch):
     rm_res = run_async(server.feed_unwatch_repo(server.WatchRepoInput(repo="owner/repo1")))
     rm_data = json.loads(rm_res)
     assert rm_data["removed"] is True
+
+    # ensure context listing and deletion work
+    contexts_before = json.loads(run_async(server.feed_list_contexts()))
+    assert any(c["name"] == "testctx" for c in contexts_before["contexts"])
+    delete_res = run_async(server.feed_delete_context(server.DeleteContextInput(name="testctx")))
+    delete_data = json.loads(delete_res)
+    assert delete_data["deleted"] is True
+    contexts_after = json.loads(run_async(server.feed_list_contexts()))
+    assert all(c["name"] != "testctx" for c in contexts_after["contexts"])
 
     # summary tool with monkeypatched github/embeddings
     class GHShim:

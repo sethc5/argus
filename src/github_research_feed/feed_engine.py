@@ -142,12 +142,13 @@ class FeedEngine:
         # Get search results
         raw_results = await self.github.search_repos(query, language, min_stars, limit * 2)
 
-        # Embed and score each candidate
+        # Embed and score each candidate in batches to minimize API calls
         candidates = []
-        for repo in raw_results[:limit * 2]:
+        scoped_results = raw_results[:limit * 2]
+        texts = [build_repo_text(repo) for repo in scoped_results]
+        embeddings = await self.embeddings.embed_batch(texts)
+        for repo, embedding in zip(scoped_results, embeddings):
             full_name = repo.get("full_name") or f"{repo.get('owner', {}).get('login', '')}/{repo.get('name', '')}"
-            text = build_repo_text(repo)
-            embedding = await self.embeddings.embed(text)
             score, matched_ctx = score_against_contexts(embedding, contexts)
 
             candidate = {
