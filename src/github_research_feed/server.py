@@ -123,9 +123,8 @@ async def feed_get_repo_summary(params: RepoSummaryInput) -> str:
     repo_data = await _github.get_repo(params.repo)
     readme = await _github.get_readme(params.repo)
     releases = await _github.get_releases(params.repo, limit=3)
-    topics = await _github.get_topics(params.repo)
-
-    repo_data["topics"] = topics
+    # repo_data may already include `topics` when mercy-preview header is used
+    topics = repo_data.get("topics", [])
     text = build_repo_text(repo_data, readme)
     embedding = await _embeddings.embed(text)
 

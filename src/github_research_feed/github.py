@@ -17,8 +17,11 @@ class GitHubClient:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-    async def _get(self, path: str, params: Optional[Dict] = None) -> Any:
-        async with httpx.AsyncClient(headers=self._headers, timeout=30.0) as client:
+    async def _get(self, path: str, params: Optional[Dict] = None, extra_headers: Optional[Dict[str, str]] = None) -> Any:
+        headers = self._headers.copy()
+        if extra_headers:
+            headers.update(extra_headers)
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
             resp = await client.get(f"{GITHUB_API}{path}", params=params)
             # rate-limit awareness: if remaining is zero, wait until reset
             if resp.headers:
@@ -53,8 +56,12 @@ class GitHubClient:
         return results[:limit]
 
     async def get_repo(self, full_name: str) -> Dict:
-        """Get repo metadata."""
-        return await self._get(f"/repos/{full_name}")
+        """Get repo metadata (including topics)."""
+        # topics are only returned when the mercy-preview accept header is used
+        return await self._get(
+            f"/repos/{full_name}",
+            extra_headers={"Accept": "application/vnd.github.mercy-preview+json"}
+        )
 
     async def get_readme(self, full_name: str) -> Optional[str]:
         """Get README content (decoded from base64)."""
@@ -122,16 +129,6 @@ class GitHubClient:
         ]
         return filtered[:limit]
 
-    async def get_topics(self, full_name: str) -> List[str]:
-        """Get repo topics."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"{GITHUB_API}/repos/{full_name}/topics",
-                headers={**self._headers, "Accept": "application/vnd.github.mercy-preview+json"}
-            )
-            if resp.status_code == 200:
-                return resp.json().get("names", [])
-        return []
 
     async def get_trending(
         self,
