@@ -16,12 +16,14 @@ Turns GitHub into a queryable, summarized, discovery-capable research tool that 
 ```bash
 pip install github-research-feed
 
-# Configure
+# Configuration
+# an example .env file is included in the repository; copy it to .env
+# and fill in your own keys.
+# Alternatively, set the variables directly as shown below.
 export GITHUB_TOKEN=ghp_...
 export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...   # for embeddings
 ```
-
 Add to your MCP config (Cline / Claude Desktop):
 
 ```json
