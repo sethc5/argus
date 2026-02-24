@@ -56,8 +56,19 @@ _summarizer = Summarizer(_config.anthropic_api_key, _config.summarizer_model)
 _engine = FeedEngine(_config.db_path, _github, _embeddings, _summarizer, _config.min_relevance)
 
 
+_db_initialized = False
+
 async def _ensure_db():
-    await init_db(_config.db_path)
+    """Run database initialization once per process.
+
+    FastMCP tools currently call this at the start of each invocation; we
+    simply cache the fact that the schema has been created to avoid
+    unnecessary disk I/O.
+    """
+    global _db_initialized
+    if not _db_initialized:
+        await init_db(_config.db_path)
+        _db_initialized = True
 
 
 # ============================================================
