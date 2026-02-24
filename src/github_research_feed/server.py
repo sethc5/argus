@@ -38,7 +38,8 @@ except ImportError:  # pragma: no cover - optional
 
 from .config import load_config
 from .db import (
-    init_db, upsert_watched_repo, get_watched_repos, remove_watched_repo,
+    init_db, upsert_watched_repo, upsert_watched_repos_batch,
+    get_watched_repos, remove_watched_repo,
     upsert_project_context, get_project_contexts, get_project_context,
     get_feed_events, get_discovery_candidates, dismiss_candidate,
     delete_project_context,
@@ -61,18 +62,12 @@ _engine = FeedEngine(_config.db_path, _github, _embeddings, _summarizer, _config
 _db_initialized_path: Optional[Path] = None
 
 async def _ensure_db():
-    """Run database initialization once per process.
-
-    FastMCP tools currently call this at the start of each invocation; we
-    simply cache the fact that the schema has been created to avoid
-    unnecessary disk I/O.
-    """
+    """Run database initialization once per process."""
     global _db_initialized_path
     target = _config.db_path
-    resolved_target = target.resolve()
-    if _db_initialized_path != resolved_target:
-        await init_db(resolved_target)
-        _db_initialized_path = resolved_target
+    if _db_initialized_path != target:
+        await init_db(target)
+        _db_initialized_path = target
 
 
 # ============================================================
@@ -348,12 +343,9 @@ async def feed_watch_org(params: WatchOrgInput) -> str:
     """
     await _ensure_db()
     repos = await _github.get_org_repos(params.org, params.language, params.min_stars)
-    added = []
-    for repo in repos:
-        full_name = repo.get("full_name")
-        if full_name:
-            await upsert_watched_repo(_config.db_path, full_name, source="org_watch")
-            added.append(full_name)
+    added = [repo["full_name"] for repo in repos if repo.get("full_name")]
+    if added:
+        await upsert_watched_repos_batch(_config.db_path, added, source="org_watch")
     return json.dumps({"org": params.org, "added_count": len(added), "repos": added})
 
 
@@ -423,12 +415,9 @@ async def feed_sync_starred(params: SyncStarredInput) -> str:
     """
     await _ensure_db()
     starred = await _github.get_starred_repos(params.username, params.limit)
-    added = []
-    for repo in starred:
-        full_name = repo.get("full_name")
-        if full_name:
-            await upsert_watched_repo(_config.db_path, full_name, source="starred")
-            added.append(full_name)
+    added = [repo["full_name"] for repo in starred if repo.get("full_name")]
+    if added:
+        await upsert_watched_repos_batch(_config.db_path, added, source="starred")
     return json.dumps({"synced_count": len(added), "repos": added[:50], "truncated": len(added) > 50})
 
 

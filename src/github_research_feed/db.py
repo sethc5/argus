@@ -88,6 +88,19 @@ async def upsert_watched_repo(db_path: Path, full_name: str, source: str = "manu
         await db.commit()
 
 
+async def upsert_watched_repos_batch(db_path: Path, repos: List[str], source: str = "manual") -> None:
+    """Batch-insert multiple watched repos in a single connection."""
+    now = _now()
+    async with aiosqlite.connect(db_path) as db:
+        await db.executemany(
+            """INSERT INTO watched_repos (full_name, source, added_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(full_name) DO NOTHING""",
+            [(r, source, now) for r in repos],
+        )
+        await db.commit()
+
+
 async def get_watched_repos(db_path: Path) -> List[Dict[str, Any]]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row

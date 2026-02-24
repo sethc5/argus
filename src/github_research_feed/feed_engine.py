@@ -1,9 +1,12 @@
 """Feed engine - polling, event detection, relevance scoring."""
 
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+_logger = logging.getLogger(__name__)
 
 from .db import (
     get_watched_repos, update_repo_checked, update_repo_embedding,
@@ -47,7 +50,7 @@ class FeedEngine:
                 counts["repos_checked"] += 1
             except Exception as e:
                 # Don't let one bad repo kill the whole poll
-                print(f"Error polling {repo['full_name']}: {e}")
+                _logger.warning("Error polling %s: %s", repo['full_name'], e)
 
         return counts
 

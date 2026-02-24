@@ -16,7 +16,8 @@ MAX_TEXT_CHARS = 8000  # Keep well under token limits
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
     """Compute cosine similarity between two embedding vectors without numpy."""
-    # simple dot product / norms
+    if len(a) != len(b):
+        raise ValueError(f"Embedding dimension mismatch: {len(a)} vs {len(b)}")
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(y * y for y in b))

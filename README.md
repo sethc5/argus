@@ -79,6 +79,7 @@ feed_get_digest(days_back=7, project_filter="athanor")
 | `feed_add_context` | Register a project context |
 | `feed_list_contexts` | List project contexts |
 | `feed_update_context` | Update a project context |
+| `feed_delete_context` | Delete a project context |
 | `feed_poll_now` | Manually trigger a feed poll |
 
 ## Architecture

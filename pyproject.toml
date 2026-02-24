@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "github-research-feed"
-version = "0.1.0"
+version = "0.2.0"
 description = "Personalized GitHub research intelligence feed as an MCP server"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,3 @@ github-research-feed = "github_research_feed.server:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["github_research_feed*"]
-
-[tool.setuptools.package-dir]
-"github_research_feed" = "src/github_research_feed"

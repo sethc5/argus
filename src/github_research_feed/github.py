@@ -2,6 +2,7 @@
 
 
 from typing import Optional, List, Dict, Any
+import base64
 import time
 import logging
 import asyncio
@@ -13,7 +14,6 @@ except ImportError:  # pragma: no cover - optional
     httpx = None
 
 GITHUB_API = "https://api.github.com"
-GITHUB_TRENDING_SCRAPE = "https://github.com/trending"
 
 _logger = logging.getLogger(__name__)
 
@@ -81,7 +81,6 @@ class GitHubClient:
 
     async def get_readme(self, full_name: str) -> Optional[str]:
         """Get README content (decoded from base64)."""
-        import base64
         try:
             data = await self._get(f"/repos/{full_name}/readme")
             if data.get("encoding") == "base64":
@@ -117,17 +116,29 @@ class GitHubClient:
         limit: int = 20,
         sort: str = "stars",
     ) -> List[Dict]:
-        """Search GitHub repos by query string."""
+        """Search GitHub repos by query string (paginated)."""
         q = f"{query} stars:>={min_stars}"
         if language:
             q += f" language:{language}"
-        data = await self._get("/search/repositories", {
-            "q": q,
-            "sort": sort,
-            "order": "desc",
-            "per_page": min(limit, 30),
-        })
-        return data.get("items", [])
+        results: List[Dict] = []
+        page = 1
+        while len(results) < limit:
+            per_page = min(30, limit - len(results))
+            data = await self._get("/search/repositories", {
+                "q": q,
+                "sort": sort,
+                "order": "desc",
+                "per_page": per_page,
+                "page": page,
+            })
+            items = data.get("items", [])
+            if not items:
+                break
+            results.extend(items)
+            if len(items) < per_page:
+                break
+            page += 1
+        return results[:limit]
 
     async def get_org_repos(
         self,
@@ -162,15 +173,7 @@ class GitHubClient:
     async def get_trending(
         self,
         language: Optional[str] = None,
-        since: str = "weekly",
     ) -> List[Dict]:
-        """
-        Return trending repos for a language.  The classic HTML scrape
-        was brittle and no longer needed; we just perform a lightweight
-        search as a proxy.  The parameters are kept for compatibility.
-        """
-        # GitHub has never offered a stable trending API; the previous
-        # scraping logic often failed.  Simplest approach is to perform a
-        # search ordered by stars or recent updates.
+        """Return trending repos for a language via search proxy."""
         query = f"language:{language}" if language else "stars:>100"
         return await self.search_repos(query, limit=25, sort="updated")
