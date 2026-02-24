@@ -123,36 +123,12 @@ class GitHubClient:
         since: str = "weekly",
     ) -> List[Dict]:
         """
-        Scrape GitHub trending page (no official API).
-        Returns list of {full_name, description, stars, language}.
-        Falls back to search if scraping fails.
+        Return trending repos for a language.  The classic HTML scrape
+        was brittle and no longer needed; we just perform a lightweight
+        search as a proxy.  The parameters are kept for compatibility.
         """
-        try:
-            url = "https://github.com/trending"
-            if language:
-                url += f"/{language}"
-            url += f"?since={since}"
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(url, headers={"User-Agent": "github-research-feed/0.1"})
-                resp.raise_for_status()
-
-            # Parse trending repos from HTML (simple extraction)
-            import re
-            html = resp.text
-            repos = []
-            # Match repo links like /owner/repo
-            matches = re.findall(r'href="/([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)"', html)
-            seen = set()
-            for m in matches:
-                if "/" in m and m not in seen and not m.startswith("topics/"):
-                    seen.add(m)
-                    repos.append({"full_name": m, "description": "", "stars": 0})
-                if len(repos) >= 25:
-                    break
-            return repos
-
-        except Exception:
-            # Fallback: search for trending by language
-            query = f"language:{language}" if language else "stars:>100"
-            return await self.search_repos(query, limit=20, sort="updated")
+        # GitHub has never offered a stable trending API; the previous
+        # scraping logic often failed.  Simplest approach is to perform a
+        # search ordered by stars or recent updates.
+        query = f"language:{language}" if language else "stars:>100"
+        return await self.search_repos(query, limit=25, sort="updated")
